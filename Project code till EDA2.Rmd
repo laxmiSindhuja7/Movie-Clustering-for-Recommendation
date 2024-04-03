@@ -1,0 +1,284 @@
+---
+title: "Project"
+output: html_document
+date: "2023-04-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+df <- readr::read_csv("Movie-Dataset-Latest.csv",show_col_types = FALSE)
+head(df)
+```
+```{r}
+#Summary of dataset
+str(df)
+```
+```{r}
+summary(df)
+
+```
+
+
+```{r}
+#Checking for null values
+colSums(is.na(df))
+```
+
+```{r}
+#Converting the column type of release_date to date type-Already the present type is date type-no need of conversion
+df$release_date <- as.Date(df$release_date, format = "%Y-%m-%d")
+```
+
+```{r}
+library(lubridate)
+df$year <- year(as.Date(df$release_date))
+df$month <- month(as.Date(df$release_date))
+```
+
+```{r}
+df1 <- df[, !(names(df) %in% c('Unnamed: 0', 'id', 'release_date', 'overview', 'video', 'year', 'month','title'))]
+```
+
+```{r}
+df_100 <- head(df[order(-df$popularity), ], 100)
+```
+#DATA VISUALIZATION
+
+```{r}
+library(corrplot)
+
+# Compute correlation matrix
+corr_matrix <- cor(df1)
+
+# Create correlation plot with annotations
+corrplot(corr_matrix, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45, 
+         method = "circle", number.cex = 0.8, 
+         addCoef.col = "black", 
+         p.mat = corr_matrix, sig.level = 0.05, insig = "blank")
+
+```
+
+```{r}
+library(ggplot2)
+
+# Create data frame with total popularity by year
+df_year <- aggregate(df$popularity, by = list(df$year), FUN = sum)
+names(df_year) <- c("year", "total_popularity")
+
+# Create bar plot
+ggplot(df_year, aes(x = year, y = total_popularity)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  ggtitle("Total Popularity of Movies by Year") +
+  xlab("Year") +
+  ylab("Total Popularity") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r}
+head(df_100, 10)
+```
+
+```{r}
+library(ggplot2)
+
+# Create a data frame with the count of releases per year
+df_year <- data.frame(table(df$year))
+
+# Plot a histogram with ggplot2
+ggplot(df_year, aes(x = Var1, y = Freq)) + 
+  geom_bar(stat = "identity", fill = "blue") +
+  ggtitle("Number of Releases per Year") +
+  xlab("Year") + ylab("Count")
+
+```
+
+```{r}
+library(GGally)
+ggpairs(data = df1)
+```
+#kmeans clustering
+
+```{r}
+
+# Set the number of clusters
+num_clusters <- 4
+
+# Run k-means clustering
+kmeans_model <- kmeans(df1, centers = num_clusters)
+
+# Print the summary of the model
+summary(kmeans_model)
+
+```
+
+
+```{r}
+
+```
+
+```{r}
+#any(is.na(df))
+#apply(df, 2, function(x) any(is.infinite(x)))
+
+```
+
+```{r}
+library(tidyverse)
+library(cluster)
+#library(factoextra)
+library(lubridate)
+library(plotly)
+
+movies <- df
+# Extracting year from released date
+movies$year <- year(movies$release_date)
+
+# Selecting variables
+movie_data <- movies %>%
+  select(year,popularity, vote_average, vote_count) %>%
+  drop_na()
+
+# Standardizing the variables
+movie_data_scaled <- scale(movie_data)
+
+# optimal number of clusters using the elbow method
+#elbow_plot <- fviz_nbclust(movie_data_scaled, kmeans, method = "wss") +
+#  labs(title = "Elbow plot")
+
+
+km_out_list <- lapply(1:10, function(k) list(
+  k=k,
+  km_out=kmeans(movie_data_scaled, k, nstart = 20)))
+
+km_results <- data.frame(
+  k=sapply(km_out_list, function(k) k$k),
+  totss=sapply(km_out_list, function(k) k$km_out$totss),
+  tot_withinss=sapply(km_out_list, function(k) k$km_out$tot.withinss)
+  )
+km_results
+plot_ly(km_results,x=~k,y=~tot_withinss) %>% add_markers() %>% add_paths()
+
+
+# Performing k-means clustering
+k <- 5  #Taking number of clusters From elbow plot
+kmeans_model <- kmeans(movie_data_scaled, centers = k)
+
+# Add cluster labels to the original data
+movies_clustered <- movies %>%
+  select(year,popularity, vote_average, vote_count) %>%
+  drop_na() %>%
+  mutate(cluster = kmeans_model$cluster)
+
+ggplot(movies_clustered, aes(x = popularity, y = vote_count, color = factor(cluster))) +
+  geom_point() +
+  labs(x = "popularity", y = "Vote count") +
+  ggtitle("Clustered movies by popularity and Vote count")
+
+```
+```{r}
+ggplot(movies_clustered, aes(x = popularity, y = vote_average, color = factor(cluster))) +
+  geom_point() +
+  labs(x = "popularity", y = "Vote count") +
+  ggtitle("Clustered movies by popularity and Vote Average")
+
+```
+```{r}
+ggplot(movies_clustered, aes(x = vote_average, y = vote_count, color = factor(cluster))) +
+  geom_point() +
+  labs(x = "popularity", y = "Vote count") +
+  ggtitle("Clustered movies by popularity and Vote count")
+
+```
+```{r}
+group_counts <- movies_clustered %>%
+  group_by(cluster) %>%
+  summarise(count = n())
+
+# plot bar plot
+ggplot(group_counts, aes(x = cluster, y = count)) +
+  geom_bar(stat = "identity")
+```
+```{r}
+ggplot(movies_clustered, aes(x = factor(cluster), y = vote_average, fill = factor(cluster))) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "Vote Average")
+
+```
+```{r}
+ggplot(movies_clustered, aes(x = factor(cluster), y = vote_count, fill = factor(cluster))) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "Vote Count")
+```
+```{r}
+ggplot(movies_clustered, aes(x = factor(cluster), y = popularity, fill = factor(cluster))) +
+  geom_boxplot() +
+  labs(x = "Cluster", y = "Popularity")
+```
+```{r}
+movies_clustered %>%
+  group_by(cluster, year) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x = factor(year), y = count, fill = factor(cluster))) +
+  geom_bar(stat = "identity") +
+  labs(x = "Released Year", y = "Movie Count")
+```
+```{r}
+library(cluster)
+movie_data_scaled
+# Compute silhouette score for each movie
+silhouette_scores <- silhouette(movie_data_scaled, kmeans_model$cluster)
+
+# Compute the mean silhouette score across all movies
+mean_silhouette_score <- mean(silhouette_scores[, 3])
+
+# Print the mean silhouette score
+cat("Mean silhouette score:", mean_silhouette_score, "\n")
+
+```
+```{r}
+library(dplyr)
+
+# Compute the within-cluster sum of squares for each cluster
+cluster_sumsq <- movie_data_scaled %>%
+  mutate(cluster = kmeans_model$cluster) %>%
+  group_by(cluster) %>%
+  summarise(cluster_sumsq = sum(rowSums((.[, -ncol(.)])^2)))
+
+# Print the sum of within-cluster sum of squares across all clusters
+cat("Sum of within-cluster sum of squares:", sum(cluster_sumsq$cluster_sumsq), "\n")
+
+```
+```{r}
+# Compute the between-cluster sum of squares
+between_cluster_sumsq <- sum(kmeans_model$betweenss)
+
+# Print the between-cluster sum of squares
+cat("Between-cluster sum of squares:", between_cluster_sumsq, "\n")
+
+```
+
+```{r}
+set.seed(80)
+x_dist<- dist(movie_data_scaled)
+hc.complete <- hclust(dist(movie_data_scaled), method = "complete")
+hc.average <- hclust(dist(movie_data_scaled), method = "average")
+hc.single <- hclust(dist(movie_data_scaled), method = "single")
+
+#movies_hclust <- hclust(dist(movie_data_scaled))
+#fviz_dend(movies_hclust, k = 10)
+
+plot(hc.average, main = "Average Linkage", xlab = "", sub = "", cex = .9)
+plot(hc.complete, main = "Complete Linkage",cex = .9, xlab = "", sub = "")
+
+```
